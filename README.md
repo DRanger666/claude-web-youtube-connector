@@ -57,11 +57,7 @@ passphrase on its sign-in page. Claude walks through this when the connector is
 added: it registers itself, opens the sign-in page, and receives a token for an
 hour and a refresh token for 90 days, which is replaced each time it is used.
 
-Set the passphrase without putting it in a command line or the shell history:
-
-```sh
-read -rs p && printf %s "$p" | npm run --silent set-passphrase; unset p
-```
+Set or change the passphrase with `npm run set-passphrase`, which asks for it.
 
 What a stranger who finds the address can do:
 

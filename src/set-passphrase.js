@@ -1,12 +1,13 @@
-// Sets the sign-in passphrase from standard input, so it never appears in a
-// command line or the shell history:
-//   read -rs p && printf %s "$p" | npm run --silent set-passphrase; unset p
-import { readFileSync } from 'node:fs';
+// Asks for the sign-in passphrase and saves its hash:
+//   npm run set-passphrase
+import { createInterface } from 'node:readline/promises';
 import { STATE_DIR, savePassphrase } from './auth.js';
 
-const passphrase = readFileSync(0, 'utf8').replace(/\r?\n$/, '');
+const prompt = createInterface({ input: process.stdin, output: process.stdout });
+const passphrase = await prompt.question('New passphrase (at least 12 characters): ');
+prompt.close();
 if (passphrase.length < 12) {
-  console.error('Use a passphrase of at least 12 characters');
+  console.error(`That is ${passphrase.length} characters; nothing was saved`);
   process.exit(1);
 }
 savePassphrase(passphrase);
