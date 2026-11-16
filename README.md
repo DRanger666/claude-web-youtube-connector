@@ -21,9 +21,18 @@ both Claude Code and Claude on the web.
 | `video_info` | Title, channel, length, and the spoken-language captions available |
 | `captions` | Spoken-language captions as timestamped paragraphs, for the whole video or a time range; never machine-translated |
 | `gemini` | A question, or a transcript, about one clip of a video |
+| `list_files` | The files in the saved-files folder |
+| `read_file` | One saved file |
+| `save_file` | Text from the chat, such as notes or a summary, saved to a file |
+
+`captions` and `gemini` also take `save_as`, a path inside the saved-files
+folder, `~/YouTube_from_Claude` (or `FILES_DIR`). That folder is the only place
+the connector reads or writes: paths are relative to it, paths that leave it are
+refused, and an existing file is replaced only with `overwrite`.
 
 The server also sends Claude short usage rules: captions first, Gemini only for
-what they lack, and clip sizes that respect the Gemini quota.
+what they lack, clip sizes that respect the Gemini quota, and checking saved
+files before spending quota on a question answered earlier.
 
 ## Run it locally
 
