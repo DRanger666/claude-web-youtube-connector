@@ -2,16 +2,22 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
+import { getOAuthProtectedResourceMetadataUrl, mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
+import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { z } from 'zod';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, relative } from 'node:path';
+import { PassphraseProvider } from './auth.js';
 import { FILES_DIR, insidePath, listFiles, readText, writeText } from './files.js';
 import { askGemini, describeVideo, transcript } from './youtube.js';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.PORT ?? 8790);
-const PUBLIC_HOST = process.env.PUBLIC_HOST;
+// The address Claude uses, such as https://machine.example.ts.net; the server
+// itself listens only on this machine.
+const PUBLIC_URL = new URL(process.env.PUBLIC_URL ?? `http://127.0.0.1:${PORT}`);
+const MCP_URL = new URL('/mcp', PUBLIC_URL);
 
 const INSTRUCTIONS = `YouTube tools running on the user's own computer.
 
@@ -114,12 +120,19 @@ export function createServer() {
 }
 
 export function createApp() {
-  const allowedHosts = ['127.0.0.1', 'localhost', ...(PUBLIC_HOST ? [PUBLIC_HOST] : [])];
-  const app = createMcpExpressApp({ host: HOST, allowedHosts });
+  const app = createMcpExpressApp({ host: HOST, allowedHosts: ['127.0.0.1', 'localhost', PUBLIC_URL.hostname] });
+  // Tailscale Funnel forwards from this machine; rate limits should count the
+  // address it forwards for, not the tunnel's own.
+  app.set('trust proxy', 'loopback');
 
   app.get('/health', (req, res) => res.type('text/plain').send('awake\n'));
 
-  app.post('/mcp', async (req, res) => {
+  const provider = new PassphraseProvider();
+  app.use(mcpAuthRouter({ provider, issuerUrl: PUBLIC_URL, resourceServerUrl: MCP_URL, resourceName: 'YouTube on my computer' }));
+  app.use(provider.signInRouter());
+  const signedIn = requireBearerAuth({ verifier: provider, resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(MCP_URL) });
+
+  app.post('/mcp', signedIn, async (req, res) => {
     const server = createServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => {
@@ -141,5 +154,5 @@ export function createApp() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  createApp().listen(PORT, HOST, () => console.log(`YouTube connector on http://${HOST}:${PORT}/mcp`));
+  createApp().listen(PORT, HOST, () => console.log(`YouTube connector on http://${HOST}:${PORT}/mcp for ${MCP_URL}`));
 }

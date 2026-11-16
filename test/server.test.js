@@ -1,33 +1,26 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { rm } from 'node:fs/promises';
-import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { signIn, startServer } from './helpers.js';
 
-// The saved-files folder is fixed when the server module loads, so set it first.
-const root = join(import.meta.dirname, '.scratch-server-files');
-process.env.FILES_DIR = root;
-const { createApp } = await import('../src/server.js');
-
-let listener;
+let server;
 let base;
+let accessToken;
 
 before(async () => {
-  listener = createApp().listen(0, '127.0.0.1');
-  await new Promise((resolve) => listener.once('listening', resolve));
-  base = `http://127.0.0.1:${listener.address().port}`;
+  server = await startServer('server');
+  base = server.base;
+  accessToken = (await signIn(base)).tokens.access_token;
 });
 
-after(async () => {
-  listener.close();
-  await rm(root, { recursive: true, force: true });
-});
+after(() => server.close());
 
 async function connect() {
   const client = new Client({ name: 'test', version: '1' });
-  await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`)));
+  const requestInit = { headers: { authorization: `Bearer ${accessToken}` } };
+  await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit }));
   return client;
 }
 
