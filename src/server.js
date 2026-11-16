@@ -44,10 +44,22 @@ const saveAs = z.string().optional().describe(`Save the result to this path insi
 const overwrite = z.boolean().optional().describe('Replace the file if it already exists');
 const seconds = (what) => z.number().int().min(0).describe(`${what}, in seconds from the start of the video`);
 
-function textResult(run) {
+const short = (text) => (text.length > 300 ? `${text.slice(0, 300)}...` : text);
+
+// Runs a tool, turns its text or error into a result Claude can read, and logs
+// how it ended, so failures and slow calls show in the service log.
+function textResult(name, run) {
+  const started = Date.now();
+  const took = () => `${((Date.now() - started) / 1000).toFixed(1)}s`;
   return run().then(
-    (text) => ({ content: [{ type: 'text', text }] }),
-    (error) => ({ content: [{ type: 'text', text: error.message }], isError: true }),
+    (text) => {
+      console.log(`${name} ok in ${took()}, ${text.length} characters`);
+      return { content: [{ type: 'text', text }] };
+    },
+    (error) => {
+      console.log(`${name} failed in ${took()}: ${short(error.message)}`);
+      return { content: [{ type: 'text', text: error.message }], isError: true };
+    },
   );
 }
 
@@ -58,14 +70,14 @@ export function createServer() {
     description: 'Title, channel, length, and the language of the spoken-language captions of a YouTube video.',
     inputSchema: { video },
     annotations: { readOnlyHint: true },
-  }, ({ video }) => textResult(() => describeVideo(video)));
+  }, ({ video }) => textResult('video_info', () => describeVideo(video)));
 
   server.registerTool('captions', {
     description: 'Captions in the language spoken in the video, as timestamped paragraphs with links. '
       + 'Never machine-translated. Give start and end to read part of a long video. '
       + 'With save_as the captions go only to the file, and read_file shows them.',
     inputSchema: { video, start: seconds('Start').optional(), end: seconds('End').optional(), save_as: saveAs, overwrite },
-  }, ({ video, start, end, save_as, overwrite }) => textResult(async () => {
+  }, ({ video, start, end, save_as, overwrite }) => textResult('captions', async () => {
     const text = await transcript(video, start, end);
     return save_as ? writeText(save_as, text, overwrite) : text;
   }));
@@ -84,7 +96,7 @@ export function createServer() {
       overwrite,
     },
     annotations: { openWorldHint: true },
-  }, ({ video, start, end, prompt, transcript: transcriptMode, save_as, overwrite }) => textResult(async () => {
+  }, ({ video, start, end, prompt, transcript: transcriptMode, save_as, overwrite }) => textResult('gemini', async () => {
     if (end <= start) throw new Error('end must be after start');
     if (!transcriptMode && !prompt) throw new Error('Give a prompt, or set transcript to true');
     if (!save_as) return askGemini({ video, start, end, prompt, transcriptMode });
@@ -99,13 +111,13 @@ export function createServer() {
     description: `List the files saved in ${FILES_DIR} on the user's computer, or in one folder inside it.`,
     inputSchema: { folder: z.string().optional().describe('A folder inside the saved-files folder') },
     annotations: { readOnlyHint: true },
-  }, ({ folder }) => textResult(() => listFiles(folder)));
+  }, ({ folder }) => textResult('list_files', () => listFiles(folder)));
 
   server.registerTool('read_file', {
     description: `Read a text file saved in ${FILES_DIR}.`,
     inputSchema: { path: z.string().describe('Path inside the saved-files folder, as list_files shows it') },
     annotations: { readOnlyHint: true },
-  }, ({ path }) => textResult(() => readText(path)));
+  }, ({ path }) => textResult('read_file', () => readText(path)));
 
   server.registerTool('save_file', {
     description: `Save text, such as notes or a summary, to a file in ${FILES_DIR} on the user's computer. Folders are created as needed.`,
@@ -114,7 +126,7 @@ export function createServer() {
       content: z.string().describe('The text to save'),
       overwrite,
     },
-  }, ({ path, content, overwrite }) => textResult(() => writeText(path, content, overwrite)));
+  }, ({ path, content, overwrite }) => textResult('save_file', () => writeText(path, content, overwrite)));
 
   return server;
 }
@@ -133,11 +145,10 @@ export function createApp() {
   const signedIn = requireBearerAuth({ verifier: provider, resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(MCP_URL) });
 
   app.post('/mcp', signedIn, async (req, res) => {
-    // One short line per request, so the service log shows what Claude used
-    // without keeping whole notes or transcripts.
+    // One short line per request, so the service log shows what Claude asked
+    // for, without keeping whole notes or transcripts; textResult logs the end.
     const { method, params } = req.body ?? {};
-    const line = method === 'tools/call' ? `tools/call ${params?.name} ${JSON.stringify(params?.arguments)}` : method;
-    console.log(line?.length > 300 ? `${line.slice(0, 300)}...` : line);
+    console.log(short(method === 'tools/call' ? `tools/call ${params?.name} ${JSON.stringify(params?.arguments)}` : String(method)));
     const server = createServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => {

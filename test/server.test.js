@@ -41,7 +41,14 @@ test('lists exactly the YouTube tools and sends the usage rules', async () => {
 
 test('tool errors come back as results Claude can read, not as failures', async () => {
   const client = await connect();
-  const result = await client.callTool({ name: 'captions', arguments: { video: 'not a video' } });
+  const logged = [];
+  const log = console.log;
+  console.log = (line) => logged.push(line);
+  const result = await client.callTool({ name: 'captions', arguments: { video: 'not a video' } }).finally(() => { console.log = log; });
+  assert.deepEqual(logged.slice(-2).map((line) => line.replace(/\d+\.\ds/, 'Ns')), [
+    'tools/call captions {"video":"not a video"}',
+    'captions failed in Ns: Not a YouTube video URL or ID: not a video',
+  ]);
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /Not a YouTube video URL or ID/);
   const gemini = await client.callTool({ name: 'gemini', arguments: { video: 'DStYkSO4Cc0', start: 60, end: 60, prompt: 'x' } });
