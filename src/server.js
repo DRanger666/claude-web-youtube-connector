@@ -133,6 +133,11 @@ export function createApp() {
   const signedIn = requireBearerAuth({ verifier: provider, resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(MCP_URL) });
 
   app.post('/mcp', signedIn, async (req, res) => {
+    // One short line per request, so the service log shows what Claude used
+    // without keeping whole notes or transcripts.
+    const { method, params } = req.body ?? {};
+    const line = method === 'tools/call' ? `tools/call ${params?.name} ${JSON.stringify(params?.arguments)}` : method;
+    console.log(line?.length > 300 ? `${line.slice(0, 300)}...` : line);
     const server = createServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => {
