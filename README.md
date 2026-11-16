@@ -77,3 +77,30 @@ are the MCP SDK's; `src/auth.js` only decides who gets a token. The passphrase
 is stored as a scrypt hash, and clients and tokens in `auth.json`, both in
 `~/.local/state/claude-web-youtube-connector` (or `STATE_DIR`) with owner-only
 permissions. Deleting `auth.json` signs every client out.
+
+## Run it for Claude on the web
+
+It runs as a systemd user service and is published with Tailscale Funnel. With
+lingering enabled (`loginctl enable-linger`), the service starts at boot
+without a login.
+
+```sh
+mkdir -p ~/.config/claude-web-youtube-connector
+echo "PUBLIC_URL=https://$(tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")')" \
+  > ~/.config/claude-web-youtube-connector/env
+systemctl --user link "$PWD/deploy/claude-web-youtube-connector.service"
+systemctl --user enable --now claude-web-youtube-connector
+tailscale funnel --bg 8790
+```
+
+Then add `PUBLIC_URL/mcp` as a custom connector in claude.ai. Connectors added
+there also appear in Claude Code for the same account.
+
+To take it off the internet: `tailscale funnel --https=443 off`. To stop it:
+`systemctl --user disable --now claude-web-youtube-connector`, which also
+removes the link, so link it again before the next start.
+
+It works only while the laptop is awake: plugged in, with the lid open. On
+battery it suspends after 15 minutes idle, and closing the lid suspends it. If
+Claude reports that the connector cannot be reached, that is the likely cause;
+`PUBLIC_URL/health` answers `awake` when it is reachable.
