@@ -1,0 +1,18 @@
+{
+  "name": "claude-web-youtube-connector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Remote MCP connector that gives Claude on the web this machine's YouTube captions and Gemini video tools",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
+  }
+}
