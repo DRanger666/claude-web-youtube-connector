@@ -1,17 +1,13 @@
-# Link and start with:
-#   systemctl --user link "$PWD/deploy/claude-web-youtube-connector.service"
-#   systemctl --user enable --now claude-web-youtube-connector
-# PUBLIC_URL goes in ~/.config/claude-web-youtube-connector/env, for example
-#   PUBLIC_URL=https://machine.example.ts.net
+# A template: the README's install step replaces @REPO@ with the repository's
+# path and writes the result to ~/.config/systemd/user/.
 [Unit]
 Description=YouTube connector for Claude on the web
 After=network-online.target
 
 [Service]
-WorkingDirectory=%h/work_with_youtube_skill_for_claude_code/claude-web-youtube-connector
+WorkingDirectory=@REPO@
 EnvironmentFile=%h/.config/claude-web-youtube-connector/env
-Environment=PYTHON=/usr/bin/python3
-ExecStart=/usr/bin/node src/server.js
+ExecStart=/usr/bin/env node src/server.js
 Restart=on-failure
 RestartSec=5
 
