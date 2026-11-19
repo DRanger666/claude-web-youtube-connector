@@ -43,7 +43,11 @@ video with no usable captions.
 - list_files shows each request's state: FILE.running (queued or started, with
   the time), FILE.failed (the error), FILE.partial (an answer cut off). Check
   back later, scheduling a check-in if you can, and read the finished files.
-  Do not start a request again while it is still running.
+  Do not start a request again while it is still running. A request can take
+  several minutes, longer when Gemini is overloaded and the server retries, so
+  a .running file a few minutes old is not stuck.
+- A .failed file that says "Gemini overloaded" is worth retrying a few
+  minutes later. Other errors repeat, so change the request instead.
 - Cite captions with their timestamped links. Say which observations came from
   Gemini, and say when only part of a video was processed.
 
