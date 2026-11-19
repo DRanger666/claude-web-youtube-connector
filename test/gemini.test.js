@@ -45,7 +45,7 @@ test('a quick answer is returned and saved, under a name the server picks', asyn
   const job = /^gemini job gemini\/DStYkSO4Cc0_0-60s_\d{8}T\d{6}\.md/;
   assert.ok(logged.some((line) => job.test(line) && line.endsWith(': attempt 1 with FAKE_KEY: 200 in 0.1s')), logged.join('\n'));
   assert.ok(logged.some((line) => job.test(line) && / ok in \d+\.\ds$/.test(line)), logged.join('\n'));
-  assert.match(text, /^Answer for: 0\.1 ok\nSaved gemini\/DStYkSO4Cc0_0-60s_\d{8}T\d{6}\.md in /m);
+  assert.match(text, /^Answer for: 0\.1 ok\nSaved gemini\/DStYkSO4Cc0_0-60s_\d{8}T\d{6}\.md in \S+\nrequest fake ok; --caller connector$/);
   assert.doesNotMatch(await listing(), /\.running/);
 });
 
@@ -61,10 +61,16 @@ test('a slow answer returns its path in time and lands on disk later', async () 
 });
 
 test('a failure is returned when it comes in time, and kept in a .failed file', async () => {
-  assert.equal(await gemini('0 fail', { save_as: 'broken.md' }), 'Fake Gemini failure');
+  assert.equal(await gemini('0 fail', { save_as: 'broken.md' }), 'Fake Gemini failure\nrequest fake failed; --caller connector');
   assert.match(await listing(), /^broken\.md\.failed: \S+ Fake Gemini failure$/m);
+  assert.match(await readFile(saved('broken.md.failed'), 'utf8'), /^\S+ Fake Gemini failure\nrequest fake failed; --caller connector\n$/);
   assert.match(await gemini('0 ok', { save_as: 'broken.md' }), /^Answer for: 0 ok/);
   assert.doesNotMatch(await listing(), /broken\.md\.failed/);
+});
+
+test('settings chosen by Claude reach the script, and its summary comes back', async () => {
+  const text = await gemini('0 ok', { model: 'gemini-test', thinking_level: 'low', max_output_tokens: 30000, note: 'dense speech' });
+  assert.match(text, /\nrequest fake ok; --caller connector --model gemini-test --thinking-level low --max-output-tokens 30000 --note dense speech$/);
 });
 
 test('without waiting, several requests start at once and three run at a time', async () => {

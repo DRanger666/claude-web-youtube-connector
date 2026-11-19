@@ -112,20 +112,26 @@ export function createServer() {
       save_as: saveAs,
       overwrite,
       wait: z.boolean().optional().describe(`Wait up to ${WAIT_SECONDS} seconds for the answer (the default). Set to false to start the request and return at once`),
+      thinking_level: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional()
+        .describe('How much Gemini reasons before answering; thinking counts against the output limit and is billed as output. Unset uses the default; not every model accepts every level'),
+      max_output_tokens: z.number().int().positive().optional()
+        .describe('Cap on thinking plus answer tokens. Unset means the model maximum; set it only to cap what one request can cost'),
+      model: z.string().optional().describe('Gemini model. Unset uses the default; change it only with the user'),
+      note: z.string().optional().describe('Why you chose these settings, kept with the request\'s record'),
     },
     annotations: { openWorldHint: true },
-  }, ({ video, start, end, prompt, transcript: transcriptMode, save_as, overwrite, wait }) => textResult('gemini', async () => {
+  }, ({ video, start, end, prompt, transcript: transcriptMode, save_as, overwrite, wait, ...settings }) => textResult('gemini', async () => {
     if (end <= start) throw new Error('end must be after start');
     if (!transcriptMode && !prompt) throw new Error('Give a prompt, or set transcript to true');
     const path = save_as ?? `gemini/${videoId(video)}_${start}-${end}s_${new Date().toISOString().replace(/[-:]|\.\d+Z/g, '')}.md`;
     const output = insidePath(path);
     if (existsSync(output) && !overwrite) throw new Error(`${path} already exists; set overwrite to true to replace it`);
-    const { done } = await startJob({ video, start, end, prompt, transcriptMode }, output, path);
+    const { done } = await startJob({ video, start, end, prompt, transcriptMode, ...settings }, output, path);
     const later = `the result will be saved as ${path}; list_files shows its state`;
     if (wait === false) return `Started; ${later}`;
-    const finished = await Promise.race([done.then(() => true), sleep(WAIT_SECONDS * 1000, false)]);
-    if (!finished) return `Still running after ${WAIT_SECONDS} seconds; ${later}`;
-    return `${(await readText(path)).trimEnd()}\nSaved ${path} in ${FILES_DIR}`;
+    const summary = await Promise.race([done, sleep(WAIT_SECONDS * 1000, null)]);
+    if (summary === null) return `Still running after ${WAIT_SECONDS} seconds; ${later}`;
+    return `${(await readText(path)).trimEnd()}\nSaved ${path} in ${FILES_DIR}\n${summary}`;
   }));
 
   server.registerTool('list_files', {

@@ -2,7 +2,8 @@
 // request that outlasts the client's wait still ends up on disk. Next to the
 // file, a marker shows the job's state while it has no result:
 //   OUTPUT.running   queued or started, with the time
-//   OUTPUT.failed    the error; a cut-off answer is also in OUTPUT.partial
+//   OUTPUT.failed    the error, then the request's summary line; a cut-off
+//                    answer is also in OUTPUT.partial
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { askGemini } from './youtube.js';
@@ -26,8 +27,10 @@ function releaseSlot() {
 }
 
 // Claims OUTPUT, then returns at once with `done`, which settles when the job
-// ends. Refuses a second job for the same file while one is running. The
-// service log gets one line when the job ends, since the caller may be gone.
+// ends: with the script's summary of the request (settings, finish reason,
+// tokens), or with an error that includes it. Refuses a second job for the
+// same file while one is running. The service log gets one line when the job
+// ends, since the caller may be gone.
 export async function startJob(request, output, label = output) {
   const marker = `${output}.running`;
   await mkdir(dirname(output), { recursive: true });
@@ -43,14 +46,21 @@ export async function startJob(request, output, label = output) {
     await takeSlot();
     const started = Date.now();
     const took = () => `${((Date.now() - started) / 1000).toFixed(1)}s`;
+    let summary = '';
+    const onLog = (line) => {
+      if (line.startsWith('request ')) summary = line;
+      console.log(`gemini job ${label}: ${line.slice(0, 400)}`);
+    };
     try {
       await writeFile(marker, `started ${now()}\n`);
-      await askGemini({ ...request, output }, (line) => console.log(`gemini job ${label}: ${line.slice(0, 400)}`));
+      await askGemini({ ...request, output }, onLog);
       console.log(`gemini job ${label} ok in ${took()}`);
+      return summary;
     } catch (error) {
       console.log(`gemini job ${label} failed in ${took()}: ${error.message.slice(0, 300)}`);
-      await writeFile(`${output}.failed`, `${now()} ${error.message}\n`);
-      throw error;
+      const message = summary ? `${error.message}\n${summary}` : error.message;
+      await writeFile(`${output}.failed`, `${now()} ${message}\n`);
+      throw new Error(message);
     } finally {
       await rm(marker, { force: true });
       releaseSlot();

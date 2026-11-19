@@ -58,13 +58,20 @@ export async function transcript(video, start, end) {
   return captions.formatTranscript(info.basic_info.title, id, name, events);
 }
 
-// The script reports each attempt on its own stderr line, as it happens, and
-// ends with the reason when it fails; onLog gets every line, the error only
-// the last.
-export function askGemini({ video, start, end, prompt, transcriptMode, output }, onLog = () => {}) {
-  const args = [GEMINI_SCRIPT, '--video-url', watchUrl(videoId(video)), '--start', String(start), '--end', String(end)];
+// Settings the caller may choose; the script holds their defaults and records
+// what was sent.
+export const GEMINI_SETTINGS = ['model', 'thinking_level', 'max_output_tokens', 'note'];
+
+// The script reports each attempt on its own stderr line, as it happens, then
+// a summary of the request, and ends with the reason when it fails; onLog gets
+// every line, the error only the last.
+export function askGemini({ video, start, end, prompt, transcriptMode, output, ...settings }, onLog = () => {}) {
+  const args = [GEMINI_SCRIPT, '--video-url', watchUrl(videoId(video)), '--start', String(start), '--end', String(end), '--caller', 'connector'];
   args.push(...(transcriptMode ? ['--transcript'] : ['--prompt', prompt]));
   if (output) args.push('--output', output);
+  for (const name of GEMINI_SETTINGS) {
+    if (settings[name] !== undefined) args.push(`--${name.replaceAll('_', '-')}`, String(settings[name]));
+  }
   return new Promise((resolve, reject) => {
     const child = execFile(process.env.PYTHON ?? 'python3', args, { timeout: GEMINI_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
       (error, stdout, stderr) => (error ? reject(new Error(stderr.trim().split('\n').at(-1) || error.message)) : resolve(stdout.trim())));

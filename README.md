@@ -52,9 +52,31 @@ longer, so each one runs as a job that writes its answer to a file:
   `FILE.running` (queued or started, with the time) or `FILE.failed` (the
   error). An answer cut off at Gemini's output limit is kept as `FILE.partial`.
 - Jobs end if the server restarts; their markers then say so.
-- The service log has a line for each Gemini attempt: the key's name, the HTTP
-  status, the time taken and, for an answer, Gemini's token counts, including
-  tokens spent thinking.
+- The service log has a line for each Gemini attempt (the key's name, the HTTP
+  status, the time taken) and a summary of each request (settings, finish
+  reason, tokens for input, thinking and answer). Claude gets the summary with
+  the answer, and in `FILE.failed` after the error.
+- The full record of every request, including Gemini's summary of its own
+  thinking, is kept by the skill's script in
+  `~/.claude/mcp-servers/youtube/state/gemini-requests.jsonl`, with the caller
+  given as `connector`; see the skill's README.
+
+## Gemini settings
+
+`gemini` takes optional settings, which the skill's script passes to Gemini and
+records with the request:
+
+| Setting | Unset means |
+|---|---|
+| `thinking_level` | the script's default level |
+| `max_output_tokens` | the model's own maximum |
+| `model` | the script's default model |
+| `note` | no note; otherwise Claude's reason for its settings, kept in the record |
+
+The defaults live in the script only. The usage rules ask Claude to leave the
+settings unset at first, to change one for a reason it tells you and writes in
+`note`, and to change the model only with you, so that settings are worked out
+together from what the results report.
 
 ## Requirements
 
