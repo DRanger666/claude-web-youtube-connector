@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { eventsInRange, videoId } from '../src/youtube.js';
+import { join } from 'node:path';
+import { checkGeminiScript, eventsInRange, videoId } from '../src/youtube.js';
 
 test('videoId accepts the usual URL forms and a bare ID', () => {
   for (const video of [
@@ -23,4 +24,20 @@ test('eventsInRange keeps events that start inside a half-open range', () => {
   assert.deepEqual(starts(eventsInRange(events, 60, 120)), [60_000, 119_000]);
   assert.deepEqual(starts(eventsInRange(events, undefined, 60)), [0, 59_999]);
   assert.deepEqual(starts(eventsInRange(events)), starts(events));
+});
+
+// The connector runs the installed skill's Gemini script; these run that real
+// script, without keys or network, to catch a skill and connector that no
+// longer agree on its arguments.
+test('the installed skill\'s Gemini script accepts every argument the connector sends', async () => {
+  await checkGeminiScript();
+});
+
+test('a skill too old for this connector is reported by name', async () => {
+  process.env.PYTHON = join(import.meta.dirname, 'old-skill.sh');
+  try {
+    await assert.rejects(checkGeminiScript(), /does not accept the arguments.*unrecognized arguments: --caller connector$/);
+  } finally {
+    delete process.env.PYTHON;
+  }
 });

@@ -62,19 +62,45 @@ export async function transcript(video, start, end) {
 // what was sent.
 export const GEMINI_SETTINGS = ['model', 'thinking_level', 'max_output_tokens', 'note'];
 
-// The script reports each attempt on its own stderr line, as it happens, then
-// a summary of the request, and ends with the reason when it fails; onLog gets
-// every line, the error only the last.
-export function askGemini({ video, start, end, prompt, transcriptMode, output, ...settings }, onLog = () => {}) {
+const python = () => process.env.PYTHON ?? 'python3';
+
+function geminiArgs({ video, start, end, prompt, transcriptMode, output, ...settings }) {
   const args = [GEMINI_SCRIPT, '--video-url', watchUrl(videoId(video)), '--start', String(start), '--end', String(end), '--caller', 'connector'];
   args.push(...(transcriptMode ? ['--transcript'] : ['--prompt', prompt]));
   if (output) args.push('--output', output);
   for (const name of GEMINI_SETTINGS) {
     if (settings[name] !== undefined) args.push(`--${name.replaceAll('_', '-')}`, String(settings[name]));
   }
+  return args;
+}
+
+// The script reports each attempt on its own stderr line, as it happens, then
+// a summary of the request, and ends with the reason when it fails; onLog gets
+// every line, the error only the last.
+export function askGemini(request, onLog = () => {}) {
   return new Promise((resolve, reject) => {
-    const child = execFile(process.env.PYTHON ?? 'python3', args, { timeout: GEMINI_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
+    const child = execFile(python(), geminiArgs(request), { timeout: GEMINI_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
       (error, stdout, stderr) => (error ? reject(new Error(stderr.trim().split('\n').at(-1) || error.message)) : resolve(stdout.trim())));
     createInterface({ input: child.stderr }).on('line', onLog);
   });
+}
+
+// The connector runs whatever version of the skill is installed, so check that
+// its script still accepts every argument askGemini can send. Each mode is
+// tried with every setting and an empty clip (start after end): the script
+// parses all the arguments, then stops at its range check, before reading keys,
+// calling Gemini or writing a record. Any other answer means the installed
+// skill and this connector disagree.
+export async function checkGeminiScript() {
+  const setting = { model: 'gemini-check', thinking_level: 'medium', max_output_tokens: 1, note: 'startup check' };
+  for (const mode of [{ prompt: 'startup check' }, { transcriptMode: true }]) {
+    const request = { video: 'DStYkSO4Cc0', start: 1, end: 0, output: '/dev/null', ...mode, ...setting };
+    const stderr = await new Promise((resolve) => {
+      execFile(python(), geminiArgs(request), { timeout: 30_000 }, (error, stdout, stderr) => resolve(String(stderr)));
+    });
+    if (!stderr.includes('Require 0 <= start < end')) {
+      throw new Error(`The installed work-with-youtube skill does not accept the arguments this connector sends; `
+        + `update it (commit 4d3c353 or later) and reinstall it. ${GEMINI_SCRIPT} said: ${stderr.trim().split('\n').at(-1) || 'nothing'}`);
+    }
+  }
 }

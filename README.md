@@ -83,11 +83,19 @@ together from what the results report.
 - Linux with systemd, for running it as a service. The server itself is plain
   Node and runs anywhere Node does.
 - Node 24 and Python 3.
-- The `work-with-youtube` skill, installed by following its README, including
-  its setup script and the Gemini keys in
+- The `work-with-youtube` skill, commit `4d3c353` or later, installed by
+  following its README, including its setup script and the Gemini keys in
   `~/.claude/secrets/work-with-youtube.env`. The connector uses the skill's
   scripts, its keys, and the YouTube library its setup installs. It does not
   need the skill's YouTube Data API key.
+
+The connector runs the skill as installed, not a copy of its own, so an update
+to the skill reaches it at once, and the two must agree on the Gemini script's
+arguments. At startup the server runs that script with every argument it can
+send and an empty clip, which the script rejects after reading the arguments
+and before doing anything else. If the script rejects an argument instead, the
+server refuses to start and says which; the service log shows it. `npm test`
+runs the same check.
 - [Tailscale](https://tailscale.com), with HTTPS certificates and Funnel
   allowed for your tailnet in the admin console.
 - A claude.ai plan that allows custom connectors.
@@ -213,5 +221,7 @@ PUBLIC_URL=http://127.0.0.1:8790 npm start
 ```
 
 Tests run against a server on a random port with scratch folders, and make no
-YouTube or Gemini calls (`test/fake-python.sh` stands in for the Gemini script), but they need the skill installed, since the server
-loads its scripts at startup.
+YouTube or Gemini calls: `test/fake-python.sh` stands in for the Gemini script
+in the job tests. They need the skill installed, since the server loads its
+scripts, and one test runs the installed Gemini script's argument check, so a
+skill too old or too new for this connector fails `npm test`.

@@ -10,7 +10,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { PassphraseProvider } from './auth.js';
 import { FILES_DIR, insidePath, listFiles, readText, writeText } from './files.js';
 import { MAX_RUNNING, markInterrupted, startJob } from './gemini.js';
-import { describeVideo, transcript, videoId } from './youtube.js';
+import { checkGeminiScript, describeVideo, transcript, videoId } from './youtube.js';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.PORT ?? 8790);
@@ -211,6 +211,7 @@ export function createApp() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  await checkGeminiScript();
   await markInterrupted(FILES_DIR);
   createApp().listen(PORT, HOST, () => console.log(`YouTube connector on http://${HOST}:${PORT}/mcp for ${MCP_URL}`));
 }
