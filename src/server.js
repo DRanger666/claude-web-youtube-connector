@@ -30,10 +30,20 @@ video with no usable captions.
 - Captions are in the language spoken in the video. If the user wants another
   language, translate them yourself rather than asking for a translation.
 - Gemini quota is limited, and failed requests use it too. Ask for a clip, not
-  a whole video: about 2 minutes for a transcript (longer clips often stop at
-  Gemini's output limit, sooner for dense speech or non-Latin scripts), up to 30
-  minutes for other questions. If a clip fails, try a smaller one rather than
-  repeating the same request.
+  a whole video. No clip length has been tested with the current model yet, and
+  the right one depends on the speech, the language and the question: start
+  with one short clip, and size the next from what its result reports. If a
+  request fails, change it rather than repeating it.
+- Each gemini result ends with a line giving the settings used, the finish
+  reason, and the tokens spent on input, on thinking and on the answer. Use it,
+  with the user, to choose settings for the next request: if an answer stopped
+  at MAX_TOKENS with much of its output spent thinking, a lower thinking_level
+  may fit; if the answer itself was long, use a smaller clip; if Gemini misread
+  the video, a higher level may help. Leave the settings unset for a first
+  request. Change one for a reason, tell the user what you changed and why, and
+  put the reason in note, which is kept with the request's record. Leave
+  max_output_tokens unset unless the user wants to cap cost, and change model
+  only with the user.
 - Every gemini result is saved to a file, save_as or one the server names. A
   call waits up to ${WAIT_SECONDS} seconds; if Gemini is slower, it returns the file's path
   and the request keeps running. Tool calls from claude.ai run one at a time, so
@@ -41,8 +51,9 @@ video with no usable captions.
   then collect the results. The server runs ${MAX_RUNNING} Gemini requests at once
   and queues the rest.
 - list_files shows each request's state: FILE.running (queued or started, with
-  the time), FILE.failed (the error), FILE.partial (an answer cut off). Check
-  back later, scheduling a check-in if you can, and read the finished files.
+  the time), FILE.failed (the error; read_file shows the summary line too),
+  FILE.partial (an answer cut off). Check back later, scheduling a check-in if
+  you can, and read the finished files.
   Do not start a request again while it is still running. A request can take
   several minutes, longer when Gemini is overloaded and the server retries, so
   a .running file a few minutes old is not stuck.
