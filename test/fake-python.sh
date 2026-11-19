@@ -10,6 +10,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 set -- $prompt
+echo "attempt 1 with FAKE_KEY: 200 in $1s" >&2
 sleep "$1"
 if [ "$2" = fail ]; then
   echo "Fake Gemini failure" >&2

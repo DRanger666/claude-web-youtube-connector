@@ -42,7 +42,9 @@ test('a quick answer is returned and saved, under a name the server picks', asyn
   const log = console.log;
   console.log = (line) => logged.push(line);
   const text = await gemini('0.1 ok').finally(() => { console.log = log; });
-  assert.ok(logged.some((line) => /^gemini job gemini\/DStYkSO4Cc0_0-60s_\d{8}T\d{6}\.md ok in \d+\.\ds$/.test(line)), logged.join('\n'));
+  const job = /^gemini job gemini\/DStYkSO4Cc0_0-60s_\d{8}T\d{6}\.md/;
+  assert.ok(logged.some((line) => job.test(line) && line.endsWith(': attempt 1 with FAKE_KEY: 200 in 0.1s')), logged.join('\n'));
+  assert.ok(logged.some((line) => job.test(line) && / ok in \d+\.\ds$/.test(line)), logged.join('\n'));
   assert.match(text, /^Answer for: 0\.1 ok\nSaved gemini\/DStYkSO4Cc0_0-60s_\d{8}T\d{6}\.md in /m);
   assert.doesNotMatch(await listing(), /\.running/);
 });

@@ -52,6 +52,9 @@ longer, so each one runs as a job that writes its answer to a file:
   `FILE.running` (queued or started, with the time) or `FILE.failed` (the
   error). An answer cut off at Gemini's output limit is kept as `FILE.partial`.
 - Jobs end if the server restarts; their markers then say so.
+- The service log has a line for each Gemini attempt: the key's name, the HTTP
+  status, the time taken and, for an answer, Gemini's token counts, including
+  tokens spent thinking.
 
 ## Requirements
 

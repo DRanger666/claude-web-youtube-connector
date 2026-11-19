@@ -45,7 +45,7 @@ export async function startJob(request, output, label = output) {
     const took = () => `${((Date.now() - started) / 1000).toFixed(1)}s`;
     try {
       await writeFile(marker, `started ${now()}\n`);
-      await askGemini({ ...request, output });
+      await askGemini({ ...request, output }, (line) => console.log(`gemini job ${label}: ${line.slice(0, 400)}`));
       console.log(`gemini job ${label} ok in ${took()}`);
     } catch (error) {
       console.log(`gemini job ${label} failed in ${took()}: ${error.message.slice(0, 300)}`);

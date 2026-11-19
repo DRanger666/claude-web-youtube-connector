@@ -2,6 +2,7 @@
 // that Claude Code and this connector share one implementation.
 import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
+import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 
 export const SKILL_DIR = process.env.SKILL_DIR ?? join(homedir(), '.claude/skills/work-with-youtube');
@@ -57,12 +58,16 @@ export async function transcript(video, start, end) {
   return captions.formatTranscript(info.basic_info.title, id, name, events);
 }
 
-export function askGemini({ video, start, end, prompt, transcriptMode, output }) {
+// The script reports each attempt on its own stderr line, as it happens, and
+// ends with the reason when it fails; onLog gets every line, the error only
+// the last.
+export function askGemini({ video, start, end, prompt, transcriptMode, output }, onLog = () => {}) {
   const args = [GEMINI_SCRIPT, '--video-url', watchUrl(videoId(video)), '--start', String(start), '--end', String(end)];
   args.push(...(transcriptMode ? ['--transcript'] : ['--prompt', prompt]));
   if (output) args.push('--output', output);
   return new Promise((resolve, reject) => {
-    execFile(process.env.PYTHON ?? 'python3', args, { timeout: GEMINI_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
-      (error, stdout, stderr) => (error ? reject(new Error(stderr.trim() || error.message)) : resolve(stdout.trim())));
+    const child = execFile(process.env.PYTHON ?? 'python3', args, { timeout: GEMINI_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
+      (error, stdout, stderr) => (error ? reject(new Error(stderr.trim().split('\n').at(-1) || error.message)) : resolve(stdout.trim())));
+    createInterface({ input: child.stderr }).on('line', onLog);
   });
 }
