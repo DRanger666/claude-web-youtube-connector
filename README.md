@@ -88,17 +88,27 @@ together from what the results report.
   `~/.claude/secrets/work-with-youtube.env`. The connector uses the skill's
   scripts, its keys, and the YouTube library its setup installs. It does not
   need the skill's YouTube Data API key.
-
-The connector runs the skill as installed, not a copy of its own, so an update
-to the skill reaches it at once, and the two must agree on the Gemini script's
-arguments. At startup the server runs that script with every argument it can
-send and an empty clip, which the script rejects after reading the arguments
-and before doing anything else. If the script rejects an argument instead, the
-server refuses to start and says which; the service log shows it. `npm test`
-runs the same check.
 - [Tailscale](https://tailscale.com), with HTTPS certificates and Funnel
   allowed for your tailnet in the admin console.
 - A claude.ai plan that allows custom connectors.
+
+### The skill is a runtime dependency
+
+The connector runs the skill as installed, not a copy of its own, so an update
+to the skill reaches it at once, and the two must agree on the Gemini script's
+arguments and on the lines it writes to stderr. At startup the server runs that
+script with every argument it can send and an empty clip, which the script
+rejects after reading the arguments and before doing anything else. If the
+script rejects an argument instead, the server refuses to start and says which;
+the service log shows it. `npm test` runs the same check.
+
+This coupling across two repositories is a deliberate, temporary shortcut,
+not the intended design. It kept one implementation while the tools were
+changing quickly. The check covers the arguments only; the stderr lines are
+covered only by the skill's own tests. When you change either side, change the
+other in the same piece of work and run both test suites. Revisit the design if
+a third program comes to use the scripts, if others install the connector, or
+if the interface keeps changing.
 
 ## Install
 
