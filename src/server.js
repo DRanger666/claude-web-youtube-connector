@@ -116,7 +116,7 @@ export function createServer() {
     const path = save_as ?? `gemini/${videoId(video)}_${start}-${end}s_${new Date().toISOString().replace(/[-:]|\.\d+Z/g, '')}.md`;
     const output = insidePath(path);
     if (existsSync(output) && !overwrite) throw new Error(`${path} already exists; set overwrite to true to replace it`);
-    const { done } = await startJob({ video, start, end, prompt, transcriptMode }, output);
+    const { done } = await startJob({ video, start, end, prompt, transcriptMode }, output, path);
     const later = `the result will be saved as ${path}; list_files shows its state`;
     if (wait === false) return `Started; ${later}`;
     const finished = await Promise.race([done.then(() => true), sleep(WAIT_SECONDS * 1000, false)]);
@@ -165,7 +165,10 @@ export function createApp() {
     // One short line per request, so the service log shows what Claude asked
     // for, without keeping whole notes or transcripts; textResult logs the end.
     const { method, params } = req.body ?? {};
-    console.log(short(method === 'tools/call' ? `tools/call ${params?.name} ${JSON.stringify(params?.arguments)}` : String(method)));
+    // Long values (prompts, note text) are cut one by one, so a long prompt
+    // cannot push the other arguments out of the line.
+    const cut = (key, value) => (typeof value === 'string' && value.length > 80 ? `${value.slice(0, 80)}...` : value);
+    console.log(short(method === 'tools/call' ? `tools/call ${params?.name} ${JSON.stringify(params?.arguments, cut)}` : String(method)));
     const server = createServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => {

@@ -53,6 +53,11 @@ test('tool errors come back as results Claude can read, not as failures', async 
   assert.match(result.content[0].text, /Not a YouTube video URL or ID/);
   const gemini = await client.callTool({ name: 'gemini', arguments: { video: 'DStYkSO4Cc0', start: 60, end: 60, prompt: 'x' } });
   assert.match(gemini.content[0].text, /end must be after start/);
+
+  const long = 'x'.repeat(500);
+  console.log = (line) => logged.push(line);
+  await client.callTool({ name: 'captions', arguments: { video: long, save_as: 'kept.md' } }).finally(() => { console.log = log; });
+  assert.ok(logged.includes(`tools/call captions {"video":"${'x'.repeat(80)}...","save_as":"kept.md"}`), logged.join('\n'));
   await client.close();
 });
 

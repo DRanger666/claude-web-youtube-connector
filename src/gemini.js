@@ -26,8 +26,9 @@ function releaseSlot() {
 }
 
 // Claims OUTPUT, then returns at once with `done`, which settles when the job
-// ends. Refuses a second job for the same file while one is running.
-export async function startJob(request, output) {
+// ends. Refuses a second job for the same file while one is running. The
+// service log gets one line when the job ends, since the caller may be gone.
+export async function startJob(request, output, label = output) {
   const marker = `${output}.running`;
   await mkdir(dirname(output), { recursive: true });
   try {
@@ -40,10 +41,14 @@ export async function startJob(request, output) {
   await rm(`${output}.partial`, { force: true });
   const done = (async () => {
     await takeSlot();
+    const started = Date.now();
+    const took = () => `${((Date.now() - started) / 1000).toFixed(1)}s`;
     try {
       await writeFile(marker, `started ${now()}\n`);
       await askGemini({ ...request, output });
+      console.log(`gemini job ${label} ok in ${took()}`);
     } catch (error) {
+      console.log(`gemini job ${label} failed in ${took()}: ${error.message.slice(0, 300)}`);
       await writeFile(`${output}.failed`, `${now()} ${error.message}\n`);
       throw error;
     } finally {

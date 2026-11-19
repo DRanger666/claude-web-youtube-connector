@@ -38,7 +38,11 @@ const listing = async () => (await client.callTool({ name: 'list_files', argumen
 const saved = (path) => join(process.env.FILES_DIR, path);
 
 test('a quick answer is returned and saved, under a name the server picks', async () => {
-  const text = await gemini('0.1 ok');
+  const logged = [];
+  const log = console.log;
+  console.log = (line) => logged.push(line);
+  const text = await gemini('0.1 ok').finally(() => { console.log = log; });
+  assert.ok(logged.some((line) => /^gemini job gemini\/DStYkSO4Cc0_0-60s_\d{8}T\d{6}\.md ok in \d+\.\ds$/.test(line)), logged.join('\n'));
   assert.match(text, /^Answer for: 0\.1 ok\nSaved gemini\/DStYkSO4Cc0_0-60s_\d{8}T\d{6}\.md in /m);
   assert.doesNotMatch(await listing(), /\.running/);
 });
