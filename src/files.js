@@ -21,6 +21,8 @@ export async function listFiles(folder = '', root = FILES_DIR) {
   const entries = await readdir(base, { recursive: true, withFileTypes: true });
   const files = await Promise.all(entries.filter((entry) => entry.isFile()).map(async (entry) => {
     const full = join(entry.parentPath, entry.name);
+    // A Gemini request's marker shows its state instead of a size.
+    if (/\.(running|failed)$/.test(entry.name)) return `${relative(root, full)}: ${(await readFile(full, 'utf8')).trim().slice(0, 300)}`;
     return `${relative(root, full)} (${(await stat(full)).size} bytes)`;
   }));
   return files.length > 0 ? files.sort().join('\n') : 'No files yet';

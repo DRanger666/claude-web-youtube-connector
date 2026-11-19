@@ -6,11 +6,11 @@ import { getOAuthProtectedResourceMetadataUrl, mcpAuthRouter } from '@modelconte
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { z } from 'zod';
 import { existsSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
-import { dirname, relative } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { PassphraseProvider } from './auth.js';
 import { FILES_DIR, insidePath, listFiles, readText, writeText } from './files.js';
-import { askGemini, describeVideo, transcript } from './youtube.js';
+import { MAX_RUNNING, markInterrupted, startJob } from './gemini.js';
+import { describeVideo, transcript, videoId } from './youtube.js';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.PORT ?? 8790);
@@ -18,6 +18,8 @@ const PORT = Number(process.env.PORT ?? 8790);
 // itself listens only on this machine.
 const PUBLIC_URL = new URL(process.env.PUBLIC_URL ?? `http://127.0.0.1:${PORT}`);
 const MCP_URL = new URL('/mcp', PUBLIC_URL);
+// claude.ai stops waiting for a tool after 230 seconds; answer before that.
+const WAIT_SECONDS = Number(process.env.GEMINI_WAIT_SECONDS ?? 200);
 
 const INSTRUCTIONS = `YouTube tools running on the user's own computer.
 
@@ -27,10 +29,21 @@ video with no usable captions.
 
 - Captions are in the language spoken in the video. If the user wants another
   language, translate them yourself rather than asking for a translation.
-- Gemini quota is limited. Ask for a clip, not a whole long video: up to 600
-  seconds for a transcript, up to 1800 seconds for other questions. Work through
-  a long video one clip at a time, and if a clip fails, try a smaller one rather
-  than repeating the same request.
+- Gemini quota is limited, and failed requests use it too. Ask for a clip, not
+  a whole video: about 2 minutes for a transcript (longer clips often stop at
+  Gemini's output limit, sooner for dense speech or non-Latin scripts), up to 30
+  minutes for other questions. If a clip fails, try a smaller one rather than
+  repeating the same request.
+- Every gemini result is saved to a file, save_as or one the server names. A
+  call waits up to ${WAIT_SECONDS} seconds; if Gemini is slower, it returns the file's path
+  and the request keeps running. Tool calls from claude.ai run one at a time, so
+  to run several clips at once, call gemini with wait set to false for each,
+  then collect the results. The server runs ${MAX_RUNNING} Gemini requests at once
+  and queues the rest.
+- list_files shows each request's state: FILE.running (queued or started, with
+  the time), FILE.failed (the error), FILE.partial (an answer cut off). Check
+  back later, scheduling a check-in if you can, and read the finished files.
+  Do not start a request again while it is still running.
 - Cite captions with their timestamped links. Say which observations came from
   Gemini, and say when only part of a video was processed.
 
@@ -85,7 +98,7 @@ export function createServer() {
   server.registerTool('gemini', {
     description: 'Ask Gemini about a clip of a YouTube video, for what captions cannot give. '
       + 'Either give a prompt, or set transcript to true for a structured transcript of the clip in its original language. '
-      + 'With save_as the answer is both returned and saved.',
+      + 'The answer is always saved to a file, save_as or a name the server picks, and returned if it arrives in time.',
     inputSchema: {
       video,
       start: seconds('Clip start'),
@@ -94,17 +107,21 @@ export function createServer() {
       transcript: z.boolean().optional().describe('Return a transcript of the clip instead of answering a prompt'),
       save_as: saveAs,
       overwrite,
+      wait: z.boolean().optional().describe(`Wait up to ${WAIT_SECONDS} seconds for the answer (the default). Set to false to start the request and return at once`),
     },
     annotations: { openWorldHint: true },
-  }, ({ video, start, end, prompt, transcript: transcriptMode, save_as, overwrite }) => textResult('gemini', async () => {
+  }, ({ video, start, end, prompt, transcript: transcriptMode, save_as, overwrite, wait }) => textResult('gemini', async () => {
     if (end <= start) throw new Error('end must be after start');
     if (!transcriptMode && !prompt) throw new Error('Give a prompt, or set transcript to true');
-    if (!save_as) return askGemini({ video, start, end, prompt, transcriptMode });
-    const output = insidePath(save_as);
-    if (existsSync(output) && !overwrite) throw new Error(`${save_as} already exists; set overwrite to true to replace it`);
-    await mkdir(dirname(output), { recursive: true });
-    await askGemini({ video, start, end, prompt, transcriptMode, output });
-    return `${await readText(save_as)}\nSaved ${relative(FILES_DIR, output)} in ${FILES_DIR}`;
+    const path = save_as ?? `gemini/${videoId(video)}_${start}-${end}s_${new Date().toISOString().replace(/[-:]|\.\d+Z/g, '')}.md`;
+    const output = insidePath(path);
+    if (existsSync(output) && !overwrite) throw new Error(`${path} already exists; set overwrite to true to replace it`);
+    const { done } = await startJob({ video, start, end, prompt, transcriptMode }, output);
+    const later = `the result will be saved as ${path}; list_files shows its state`;
+    if (wait === false) return `Started; ${later}`;
+    const finished = await Promise.race([done.then(() => true), sleep(WAIT_SECONDS * 1000, false)]);
+    if (!finished) return `Still running after ${WAIT_SECONDS} seconds; ${later}`;
+    return `${(await readText(path)).trimEnd()}\nSaved ${path} in ${FILES_DIR}`;
   }));
 
   server.registerTool('list_files', {
@@ -170,5 +187,6 @@ export function createApp() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  await markInterrupted(FILES_DIR);
   createApp().listen(PORT, HOST, () => console.log(`YouTube connector on http://${HOST}:${PORT}/mcp for ${MCP_URL}`));
 }

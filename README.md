@@ -22,13 +22,14 @@ and Claude on the web behave the same way, and a fix to the skill reaches both.
 |---|---|
 | `video_info` | Title, channel, length, and which spoken-language captions exist |
 | `captions` | Spoken-language captions as timestamped paragraphs, for the whole video or a time range; never machine-translated |
-| `gemini` | A question, or a transcript, about one clip of a video |
+| `gemini` | A question, or a transcript, about one clip of a video; the answer is always saved to a file |
 | `list_files` | The files in the saved-files folder |
 | `read_file` | One saved file |
 | `save_file` | Text from the chat, such as notes or a summary, saved to a file |
 
 `captions` and `gemini` also take `save_as`, a path inside the saved-files
-folder, `~/YouTube_from_Claude`. That folder is the only place the connector
+folder, `~/YouTube_from_Claude`. Without it, `gemini` saves under `gemini/` with
+a name made from the video, the clip and the time. That folder is the only place the connector
 reads or writes: paths are relative to it, paths that leave it are refused, and
 an existing file is replaced only when Claude sets `overwrite`.
 
@@ -36,6 +37,21 @@ The server also sends Claude short usage rules, which claude.ai passes on:
 captions first, Gemini only for what they lack, clips small enough for the
 Gemini quota, and a look at saved files before spending quota on a question
 answered earlier.
+
+## Long Gemini requests
+
+claude.ai stops waiting for a tool after about 230 seconds (observed, not
+documented), and runs one tool call at a time. A Gemini request can take
+longer, so each one runs as a job that writes its answer to a file:
+
+- By default the call waits up to 200 seconds. If the answer arrives, Claude
+  gets it; if not, Claude gets the file's path and the request keeps running.
+- With `wait: false` the call returns at once, so Claude can start several clips
+  and collect them later. Three requests run at a time; the rest queue.
+- While a request has no answer, `list_files` shows a marker beside its file:
+  `FILE.running` (queued or started, with the time) or `FILE.failed` (the
+  error). An answer cut off at Gemini's output limit is kept as `FILE.partial`.
+- Jobs end if the server restarts; their markers then say so.
 
 ## Requirements
 
@@ -162,6 +178,7 @@ Environment variables, all optional except `PUBLIC_URL` once it is published:
 | `STATE_DIR` | `~/.local/state/claude-web-youtube-connector` | Passphrase hash, clients and tokens |
 | `SKILL_DIR` | `~/.claude/skills/work-with-youtube` | The installed skill |
 | `PYTHON` | `python3` | Interpreter for the Gemini script, which needs only the standard library |
+| `GEMINI_WAIT_SECONDS` | `200` | How long a `gemini` call waits before returning the file's path instead |
 
 ## Development
 
@@ -171,5 +188,5 @@ PUBLIC_URL=http://127.0.0.1:8790 npm start
 ```
 
 Tests run against a server on a random port with scratch folders, and make no
-YouTube or Gemini calls, but they need the skill installed, since the server
+YouTube or Gemini calls (`test/fake-python.sh` stands in for the Gemini script), but they need the skill installed, since the server
 loads its scripts at startup.
